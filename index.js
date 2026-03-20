@@ -4,69 +4,71 @@ const axios = require("axios");
 const app = express();
 app.use(express.json());
 
-const ROBLOSECURITY = process.env.ROBLOSECURITY;
+const COOKIE = process.env.ROBLOSECURITY;
 
-if (!ROBLOSECURITY) {
-    console.error("ROBLOSECURITY is missing");
+if (!COOKIE) {
+    console.error("Missing ROBLOSECURITY");
     process.exit(1);
 }
 
-async function getCsrfToken() {
-    try {
-        await axios.post("https://auth.roblox.com/v2/logout", {}, {
+const client = axios.create({
+    validateStatus: () => true
+});
+
+async function followUser(userId) {
+    const url = `https://friends.roblox.com/v1/users/${userId}/follow`;
+
+    let res = await client.post(url, {}, {
+        headers: {
+            Cookie: `.ROBLOSECURITY=${COOKIE}`
+        }
+    });
+
+    let token = res.headers["x-csrf-token"];
+
+    if (res.status === 403 && token) {
+        res = await client.post(url, {}, {
             headers: {
-                Cookie: `.ROBLOSECURITY=${ROBLOSECURITY}`
+                Cookie: `.ROBLOSECURITY=${COOKIE}`,
+                "x-csrf-token": token
             }
         });
-    } catch (e) {
-        const token = e.response?.headers["x-csrf-token"];
-        if (!token) {
-            throw new Error("Failed to get CSRF token");
-        }
-        return token;
     }
+
+    return res;
 }
 
 app.post("/follow", async (req, res) => {
-    console.log("Incoming request:", req.body);
-
-    const { userId } = req.body;
-
-    if (!userId) {
-        return res.status(400).json({ error: "No userId" });
-    }
-
     try {
-        const csrfToken = await getCsrfToken();
-        console.log("CSRF:", csrfToken);
+        const userId = req.body?.userId;
 
-        const response = await axios.post(
-            `https://friends.roblox.com/v1/users/${userId}/follow`,
-            {},
-            {
-                headers: {
-                    Cookie: `.ROBLOSECURITY=${ROBLOSECURITY}`,
-                    "x-csrf-token": csrfToken,
-                    "Content-Type": "application/json"
-                }
-            }
-        );
+        if (!userId) {
+            return res.status(400).json({ error: "No userId" });
+        }
 
-        console.log("Roblox response:", response.status, response.data);
+        const response = await followUser(userId);
 
-        res.json({ success: true });
+        console.log("STATUS:", response.status);
+        console.log("DATA:", response.data);
+
+        if (response.status === 200 || response.status === 204) {
+            return res.json({ success: true });
+        }
+
+        return res.status(500).json({
+            error: response.data,
+            status: response.status
+        });
 
     } catch (err) {
-        console.error("FULL ERROR:");
-        console.error(err.response?.data || err.message);
-
-        res.status(500).json({
-            error: err.response?.data || err.message
-        });
+        console.log("CRASH:", err.message);
+        return res.status(500).json({ error: err.message });
     }
+});
+
+app.get("/", (req, res) => {
+    res.send("ok");
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-    console.log("Running on port", PORT);
-});
+app.listen(PORT, () => console.log("running on", PORT));
