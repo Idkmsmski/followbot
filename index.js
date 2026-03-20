@@ -39,33 +39,35 @@ async function followUser(userId) {
 }
 
 app.post("/follow", async (req, res) => {
+    console.log("--- New Request Received ---");
     try {
         const userId = req.body?.userId;
         if (!userId) return res.status(400).json({ error: "No userId" });
 
-        console.log(`Attempting to follow: ${userId}`);
-        const response = await followUser(userId);
+        console.log(`Step 1: Contacting Roblox for User ${userId}...`);
+        
+        const response = await followUser(userId).catch(err => {
+            console.error("Axios Internal Error:", err.message);
+            return { status: 500, data: err.message };
+        });
 
-        console.log("Roblox Status:", response.status);
-
-        // If Roblox returns a 5xx error, it's an IP block/Cloudflare issue
-        if (response.status >= 500) {
-            console.error("Roblox is rejecting the Railway IP Address (5xx).");
-            return res.status(502).json({ error: "Roblox rejected the connection", robloxStatus: response.status });
-        }
+        console.log("Step 2: Roblox responded with status:", response.status);
 
         if (response.status === 200 || response.status === 204) {
+            console.log("Step 3: Success!");
             return res.json({ success: true });
         }
 
-        return res.status(response.status).json({
-            success: false,
-            data: response.data
+        console.log("Step 3: Failed with data:", response.data);
+        return res.status(response.status || 500).json({
+            error: "Roblox rejected request",
+            robloxStatus: response.status,
+            details: response.data
         });
 
     } catch (err) {
-        console.error("Request Failed:", err.message);
-        return res.status(500).json({ error: err.message });
+        console.error("CRITICAL CRASH:", err);
+        return res.status(500).json({ error: "Server Crashed", message: err.message });
     }
 });
 
