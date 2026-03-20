@@ -35,34 +35,46 @@ app.post("/follow", async (req, res) => {
     }
 
     try {
-        const csrfToken = await getCsrfToken();
+        let csrfToken = await getCsrfToken();
 
-        const response = await axios.post(
-            `https://friends.roblox.com/v1/users/${userId}/follow`,
-            {},
-            {
-                headers: {
-                    Cookie: `.ROBLOSECURITY=${ROBLOSECURITY}`,
-                    "x-csrf-token": csrfToken,
-                    "Content-Type": "application/json"
+        async function sendFollow(token) {
+            return axios.post(
+                `https://friends.roblox.com/v1/users/${userId}/follow`,
+                {},
+                {
+                    headers: {
+                        Cookie: `.ROBLOSECURITY=${ROBLOSECURITY}`,
+                        "x-csrf-token": token,
+                        "Content-Type": "application/json"
+                    }
                 }
+            );
+        }
+
+        try {
+            await sendFollow(csrfToken);
+        } catch (err) {
+            const newToken = err.response?.headers["x-csrf-token"];
+
+            if (newToken) {
+                console.log("Retrying with new CSRF token");
+                await sendFollow(newToken);
+            } else {
+                throw err;
             }
-        );
+        }
 
         console.log("Followed:", userId);
-        res.json({ success: true, data: response.data });
+        res.json({ success: true });
 
     } catch (err) {
         console.error("ERROR:");
         console.error(err.response?.data || err.message);
+
         res.status(500).json({
             error: err.response?.data || err.message
         });
     }
-});
-
-app.get("/", (req, res) => {
-    res.send("Server running");
 });
 
 const PORT = process.env.PORT || 3000;
