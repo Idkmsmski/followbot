@@ -28,6 +28,8 @@ async function getCsrfToken() {
 }
 
 app.post("/follow", async (req, res) => {
+    console.log("Incoming request:", req.body);
+
     const { userId } = req.body;
 
     if (!userId) {
@@ -35,40 +37,27 @@ app.post("/follow", async (req, res) => {
     }
 
     try {
-        let csrfToken = await getCsrfToken();
+        const csrfToken = await getCsrfToken();
+        console.log("CSRF:", csrfToken);
 
-        async function sendFollow(token) {
-            return axios.post(
-                `https://friends.roblox.com/v1/users/${userId}/follow`,
-                {},
-                {
-                    headers: {
-                        Cookie: `.ROBLOSECURITY=${ROBLOSECURITY}`,
-                        "x-csrf-token": token,
-                        "Content-Type": "application/json"
-                    }
+        const response = await axios.post(
+            `https://friends.roblox.com/v1/users/${userId}/follow`,
+            {},
+            {
+                headers: {
+                    Cookie: `.ROBLOSECURITY=${ROBLOSECURITY}`,
+                    "x-csrf-token": csrfToken,
+                    "Content-Type": "application/json"
                 }
-            );
-        }
-
-        try {
-            await sendFollow(csrfToken);
-        } catch (err) {
-            const newToken = err.response?.headers["x-csrf-token"];
-
-            if (newToken) {
-                console.log("Retrying with new CSRF token");
-                await sendFollow(newToken);
-            } else {
-                throw err;
             }
-        }
+        );
 
-        console.log("Followed:", userId);
+        console.log("Roblox response:", response.status, response.data);
+
         res.json({ success: true });
 
     } catch (err) {
-        console.error("ERROR:");
+        console.error("FULL ERROR:");
         console.error(err.response?.data || err.message);
 
         res.status(500).json({
