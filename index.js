@@ -8,6 +8,7 @@ const COOKIE = "_|WARNING:-DO-NOT-SHARE-THIS.--Sharing-this-will-allow-someone-t
 
 const client = axios.create({
     validateStatus: () => true,
+    timeout: 10000, 
     headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
         'Accept': 'application/json',
@@ -19,14 +20,12 @@ async function followUser(userId) {
     const url = `https://friends.roblox.com/v1/users/${userId}/follow`;
     const cookieHeader = `.ROBLOSECURITY=${COOKIE}`;
 
-    // Step 1: Initial attempt to get the X-CSRF-TOKEN
     let res = await client.post(url, {}, {
         headers: { "Cookie": cookieHeader }
     });
 
-    const token = res.headers["x-csrf-token"];
+    let token = res.headers["x-csrf-token"];
 
-    // Step 2: If 403 (Token Required), retry with the token provided by Roblox
     if (res.status === 403 && token) {
         res = await client.post(url, {}, {
             headers: {
@@ -42,37 +41,37 @@ async function followUser(userId) {
 app.post("/follow", async (req, res) => {
     try {
         const userId = req.body?.userId;
+        if (!userId) return res.status(400).json({ error: "No userId" });
 
-        if (!userId) {
-            return res.status(400).json({ error: "No userId provided" });
-        }
-
+        console.log(`Attempting to follow: ${userId}`);
         const response = await followUser(userId);
 
-        // Logging for your terminal debugging
-        console.log(`[${new Date().toISOString()}] Status: ${response.status}`);
-        
+        console.log("Roblox Status:", response.status);
+
+        // If Roblox returns a 5xx error, it's an IP block/Cloudflare issue
+        if (response.status >= 500) {
+            console.error("Roblox is rejecting the Railway IP Address (5xx).");
+            return res.status(502).json({ error: "Roblox rejected the connection", robloxStatus: response.status });
+        }
+
         if (response.status === 200 || response.status === 204) {
             return res.json({ success: true });
         }
 
-        // If it's not a success, return the error and the status code
-        return res.status(response.status || 500).json({
+        return res.status(response.status).json({
             success: false,
-            status: response.status,
             data: response.data
         });
 
     } catch (err) {
-        console.error("CRASH:", err.message);
-        return res.status(500).json({ error: "Internal Server Error", details: err.message });
+        console.error("Request Failed:", err.message);
+        return res.status(500).json({ error: err.message });
     }
 });
 
-app.get("/", (req, res) => res.send("API is running."));
+app.get("/", (req, res) => res.send("Bot is alive."));
 
 const PORT = process.env.PORT || 3000;
-
 app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server is running on port ${PORT}`);
+    console.log(`Server listening on 0.0.0.0:${PORT}`);
 });
